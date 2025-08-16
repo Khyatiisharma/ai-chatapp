@@ -90,7 +90,9 @@ import redis from "../services/redis.service.js";
 
 export const authUser = async (req, res, next) => {
   try {
-    let token = req.headers.authorization?.split(" ")[1] || req.cookies.token;
+    let token =
+      req.headers.authorization?.split(" ")[1] ||
+      req.cookies?.token;
 
     if (token) {
       token = token.replace(/^"|"$/g, ""); // remove quotes if any
@@ -100,7 +102,7 @@ export const authUser = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized: No token" });
     }
 
-    // ✅ Redis blacklist check (optional, can comment out for testing)
+    // Redis blacklist check (optional)
     if (redis) {
       const isBlacklisted = await redis.get(token);
       if (isBlacklisted) {
@@ -110,16 +112,16 @@ export const authUser = async (req, res, next) => {
       }
     }
 
-    // ✅ Verify token
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // ✅ Ensure user still exists in DB
+    // Ensure user still exists in DB
     const user = await userModel.findById(decoded.id).select("-password");
     if (!user) {
       return res.status(401).json({ message: "Unauthorized: User not found" });
     }
 
-    // ✅ Attach clean user object
+    // Attach clean user object
     req.user = {
       id: user._id,
       email: user.email,

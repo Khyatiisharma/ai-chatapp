@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "../config/axios";
 import {
@@ -15,22 +15,31 @@ function Project() {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [users, setUsers] = useState([]);
   const [project, setProject] = useState(location.state?.project || null);
-  const [message, setMessage] = useState(""); // ✅ fixed: initial empty string
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState([]); // ✅ chat messages state
   const { user } = useContext(UserContext);
+  const messageBox = useRef(null);
 
-  console.log(location.state);
-
-  // ✅ function fixed: send message
   function send() {
-    if (!message.trim()) return; // empty msg avoid
+    if (!message.trim()) return;
+
+    // apna message state me add karo
+    const newMsg = {
+      message,
+      sender: { _id: user._id, email: user.email },
+      self: true,
+    };
+    setMessages((prev) => [...prev, newMsg]);
+
+    // server ko bhejo
     sendMessage("project-message", {
       message,
-      sender: user._id,
+      sender: { _id: user._id, email: user.email },
     });
-    setMessage(""); // clear input
+
+    setMessage("");
   }
 
-  // ✅ function fixed: toggle user selection
   function handleUserClick(userId) {
     setSelectedUserIds((prev) =>
       prev.includes(userId)
@@ -41,18 +50,10 @@ function Project() {
 
   function addCollaborators() {
     axios
-      .put(
-        "/projects/add-user", // ✅ fixed: no need hardcoded localhost
-        {
-          projectId: project._id,
-          users: selectedUserIds,
-        }
-        // {
-        //   headers: {
-        //     Authorization: `Bearer ${localStorage.getItem("token")}`,
-        //   },
-        // }
-      )
+      .put("/projects/add-user", {
+        projectId: project._id,
+        users: selectedUserIds,
+      })
       .then((res) => {
         console.log(res.data);
         setIsModalOpen(false);
@@ -63,14 +64,16 @@ function Project() {
   useEffect(() => {
     const projectId = project?._id;
     if (!projectId) return;
+
     initializeSocket(projectId);
 
-    // Listen for messages
+    // ✅ incoming messages ko UI me append karo
     receiveMessage("project-message", (data) => {
-      console.log("📩 Incoming Message:", data);
+      console.log("📩 Incoming:", data);
+      setMessages((prev) => [...prev, { ...data, self: false }]);
     });
 
-    // Fetch project
+    // project fetch
     axios
       .get(`/projects/get-project/${projectId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -78,7 +81,7 @@ function Project() {
       .then((res) => setProject(res.data.project))
       .catch((err) => console.log(err));
 
-    // Fetch all users
+    // users fetch
     axios
       .get("/users/all", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -86,6 +89,13 @@ function Project() {
       .then((res) => setUsers(res.data.users))
       .catch((err) => console.log(err));
   }, [location.state?.project?._id]);
+
+  // ✅ auto scroll
+  useEffect(() => {
+    if (messageBox.current) {
+      messageBox.current.scrollTop = messageBox.current.scrollHeight;
+    }
+  }, [messages]);
 
   return (
     <main className="h-screen w-screen flex bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
@@ -110,25 +120,35 @@ function Project() {
         </header>
 
         {/* Messages */}
-        <div className="messages-box flex-grow p-6 flex flex-col gap-4 overflow-y-auto bg-gray-50">
-          <div className="self-start max-w-[85%] bg-white border shadow p-3 rounded-2xl">
-            <small className="text-gray-400 text-xs">example@gmail.com</small>
-            <p className="text-sm mt-1">Hey 👋 how are you?</p>
-          </div>
-          <div className="self-end max-w-[85%] bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow p-3 rounded-2xl">
-            <small className="opacity-80 text-xs">me@gmail.com</small>
-            <p className="text-sm mt-1">I'm good! What about you?</p>
-          </div>
-          <div className="self-start max-w-[85%] bg-white border shadow p-3 rounded-2xl">
-            <small className="text-gray-400 text-xs">example@gmail.com</small>
-            <p className="text-sm mt-1">All good here 😄</p>
-          </div>
+        <div
+          ref={messageBox}
+          className="messages-box flex-grow p-6 flex flex-col gap-4 overflow-y-auto bg-gray-50"
+        >
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`max-w-[85%] p-3 rounded-2xl shadow ${
+                msg.self
+                  ? "self-end bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
+                  : "self-start bg-white border"
+              }`}
+            >
+              <small
+                className={`block text-xs mb-1 ${
+                  msg.self ? "opacity-80" : "text-gray-400"
+                }`}
+              >
+                {msg.sender.email}
+              </small>
+              <p className="text-sm">{msg.message}</p>
+            </div>
+          ))}
         </div>
 
         {/* Input Field */}
         <div className="p-4 bg-white flex items-center gap-2 shadow-inner">
           <input
-            value={message} // ✅ bind message state
+            value={message}
             onChange={(e) => setMessage(e.target.value)}
             className="flex-grow p-3 px-4 border rounded-full outline-none focus:ring-2 focus:ring-indigo-400 transition"
             type="text"
@@ -160,12 +180,12 @@ function Project() {
             👥 Team Members
           </div>
           {project?.users?.length > 0 ? (
-            project.users.map((user) => (
+            project.users.map((u) => (
               <div
-                key={user._id}
+                key={u._id}
                 className="p-4 hover:bg-white/10 cursor-pointer"
               >
-                • {user.email}
+                • {u.email}
               </div>
             ))
           ) : (
@@ -193,7 +213,7 @@ function Project() {
               {users.map((u) => (
                 <li
                   key={u._id}
-                  onClick={() => handleUserClick(u._id)} // ✅ fixed
+                  onClick={() => handleUserClick(u._id)}
                   className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition ${
                     selectedUserIds.includes(u._id)
                       ? "bg-indigo-600 text-white border-indigo-600"
@@ -218,7 +238,6 @@ function Project() {
                 <span className="font-mono">{selectedUserIds.join(", ")}</span>
               </div>
             )}
-            {/* Add Collaborators Button */}
             <button
               className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-6 py-2 rounded-full shadow-lg"
               onClick={addCollaborators}

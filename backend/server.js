@@ -11,7 +11,9 @@ const port = process.env.PORT || 3000;
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
@@ -38,7 +40,7 @@ io.use(async (socket, next) => {
       return next(new Error("Authentication error"));
     }
 
-    socket.user = decoded;
+    socket.user = decoded; // user info save
 
     next();
   } catch (error) {
@@ -48,40 +50,40 @@ io.use(async (socket, next) => {
 
 io.on("connection", (socket) => {
   socket.roomId = socket.project._id.toString();
-
-  console.log("a user connected");
+  console.log("✅ user connected:", socket.user.email);
 
   socket.join(socket.roomId);
 
   socket.on("project-message", async (data) => {
-    const message = data.message;
+    const payload = {
+      message: data.message,
+      sender: {
+        _id: socket.user._id,
+        email: socket.user.email,
+      },
+    };
 
-    const aiIsPresentInMessage = message.includes("@ai");
-    socket.broadcast.to(socket.roomId).emit("project-message", data);
+    // Sirf dusre users ko bheje, sender ko nahi
+    socket.broadcast.to(socket.roomId).emit("project-message", payload);
 
-    if (aiIsPresentInMessage) {
-      const prompt = message.replace("@ai", "");
-
+    // AI mention check (ye sabko bhejna ho toh io.to use karo)
+    if (data.message.includes("@ai")) {
+      const prompt = data.message.replace("@ai", "");
       const result = await generateResult(prompt);
 
-      // io.to(socket.roomId).emit('project-message', {
-      //     message: result,
-      //     sender: {
-      //         _id: 'ai',
-      //         email: 'AI'
-      //     }
-      // })
-
-      return;
+      io.to(socket.roomId).emit("project-message", {
+        message: result,
+        sender: { _id: "ai", email: "ai@bot.com" },
+      });
     }
   });
 
   socket.on("disconnect", () => {
-    console.log("user disconnected");
+    console.log("❌ user disconnected:", socket.user.email);
     socket.leave(socket.roomId);
   });
 });
 
 server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`🚀 Server is running on port ${port}`);
 });

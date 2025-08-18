@@ -1,22 +1,27 @@
 import "dotenv/config";
 import http from "http";
-import app from "./index.js";
+import app from "./index.js"; // ✅ Express app
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import projectModel from "./model/project.model.js";
+import * as ai from "./services/ai.service.js"; // ✅ AI service import
 
 const port = process.env.PORT || 3000;
 
+// Create HTTP server
 const server = http.createServer(app);
+
+// Attach socket.io
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: "http://localhost:5173", // frontend origin
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
 
+// ✅ Middleware for socket authentication
 io.use(async (socket, next) => {
   try {
     const token =
@@ -29,31 +34,37 @@ io.use(async (socket, next) => {
     }
 
     socket.project = await projectModel.findById(projectId);
+    if (!socket.project) {
+      return next(new Error("Project not found"));
+    }
 
     if (!token) {
       return next(new Error("Authentication error"));
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     if (!decoded) {
       return next(new Error("Authentication error"));
     }
 
-    socket.user = decoded; // user info save
+    socket.user = decoded; // save user info in socket
 
     next();
   } catch (error) {
+    console.error("Socket Auth Error:", error.message);
     next(error);
   }
 });
 
+// ✅ Handle socket connections
 io.on("connection", (socket) => {
   socket.roomId = socket.project._id.toString();
   console.log("✅ user connected:", socket.user.email);
 
+  // join project room
   socket.join(socket.roomId);
 
+  // listen for project messages
   socket.on("project-message", async (data) => {
     const payload = {
       message: data.message,
@@ -63,27 +74,37 @@ io.on("connection", (socket) => {
       },
     };
 
-    // Sirf dusre users ko bheje, sender ko nahi
+    // Sirf dusre users ko bheje
     socket.broadcast.to(socket.roomId).emit("project-message", payload);
 
-    // AI mention check (ye sabko bhejna ho toh io.to use karo)
+    // ✅ AI mention check
     if (data.message.includes("@ai")) {
-      const prompt = data.message.replace("@ai", "");
-      const result = await generateResult(prompt);
+      const prompt = data.message.replace("@ai", "").trim();
 
-      io.to(socket.roomId).emit("project-message", {
-        message: result,
-        sender: { _id: "ai", email: "ai@bot.com" },
-      });
+      try {
+        const result = await ai.generateResult(prompt);
+
+        io.to(socket.roomId).emit("project-message", {
+          message: result,
+          sender: { _id: "ai", email: "ai@bot.com" },
+        });
+      } catch (err) {
+        io.to(socket.roomId).emit("project-message", {
+          message: "AI error: " + err.message,
+          sender: { _id: "ai", email: "ai@bot.com" },
+        });
+      }
     }
   });
 
+  // handle disconnect
   socket.on("disconnect", () => {
     console.log("❌ user disconnected:", socket.user.email);
     socket.leave(socket.roomId);
   });
 });
 
+// ✅ Start server
 server.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
 });

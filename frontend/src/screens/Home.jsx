@@ -96,7 +96,7 @@ export default function Home() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div className="fixed inset-0 flex items-center justify-center bg-white/20 backdrop-blur-[3px] z-50">
           <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md animate-fadeIn">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">
               🚀 Create New Project

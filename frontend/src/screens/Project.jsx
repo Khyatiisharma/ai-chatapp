@@ -1,32 +1,91 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { useLocation } from "react-router-dom";
+import axios from "../config/axios";
+import {
+  initializeSocket,
+  receiveMessage,
+  sendMessage,
+} from "../config/socket";
+import { UserContext } from "../context/user.context.jsx";
 
 function Project() {
+  const location = useLocation();
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [project, setProject] = useState(location.state?.project || null);
+  const [message, setMessage] = useState(""); // ✅ fixed: initial empty string
+  const { user } = useContext(UserContext);
 
-  // Dummy users list for demo
-  const users = [
-    { id: "1", name: "User One", email: "user1@email.com" },
-    { id: "2", name: "User Two", email: "user2@email.com" },
-    { id: "3", name: "User Three", email: "user3@email.com" },
-    { id: "4", name: "User Four", email: "user4@email.com" },
-    { id: "5", name: "User Five", email: "user5@email.com" },
-  ];
-
-  const handleUserClick = (userId) => {
-    if (selectedUserIds.includes(userId)) {
-      // agar already selected hai to hata do (toggle off)
-      setSelectedUserIds(selectedUserIds.filter((id) => id !== userId));
-    } else {
-      // otherwise add kar do
-      setSelectedUserIds([...selectedUserIds, userId]);
-    }
-  };
-
-  const location = useLocation();
   console.log(location.state);
+
+  // ✅ function fixed: send message
+  function send() {
+    if (!message.trim()) return; // empty msg avoid
+    sendMessage("project-message", {
+      message,
+      sender: user._id,
+    });
+    setMessage(""); // clear input
+  }
+
+  // ✅ function fixed: toggle user selection
+  function handleUserClick(userId) {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  }
+
+  function addCollaborators() {
+    axios
+      .put(
+        "/projects/add-user", // ✅ fixed: no need hardcoded localhost
+        {
+          projectId: project._id,
+          users: selectedUserIds,
+        }
+        // {
+        //   headers: {
+        //     Authorization: `Bearer ${localStorage.getItem("token")}`,
+        //   },
+        // }
+      )
+      .then((res) => {
+        console.log(res.data);
+        setIsModalOpen(false);
+      })
+      .catch((err) => console.log(err.response?.data || err.message));
+  }
+
+  useEffect(() => {
+    const projectId = project?._id;
+    if (!projectId) return;
+    initializeSocket(projectId);
+
+    // Listen for messages
+    receiveMessage("project-message", (data) => {
+      console.log("📩 Incoming Message:", data);
+    });
+
+    // Fetch project
+    axios
+      .get(`/projects/get-project/${projectId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+      .then((res) => setProject(res.data.project))
+      .catch((err) => console.log(err));
+
+    // Fetch all users
+    axios
+      .get("/users/all", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+      .then((res) => setUsers(res.data.users))
+      .catch((err) => console.log(err));
+  }, [location.state?.project?._id]);
 
   return (
     <main className="h-screen w-screen flex bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
@@ -67,13 +126,18 @@ function Project() {
         </div>
 
         {/* Input Field */}
-        <div className="p-4 border-t bg-white flex items-center gap-2 shadow-inner">
+        <div className="p-4 bg-white flex items-center gap-2 shadow-inner">
           <input
+            value={message} // ✅ bind message state
+            onChange={(e) => setMessage(e.target.value)}
             className="flex-grow p-3 px-4 border rounded-full outline-none focus:ring-2 focus:ring-indigo-400 transition"
             type="text"
             placeholder="Type your message..."
           />
-          <button className="bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white px-5 py-2 rounded-full flex items-center gap-2 shadow-md">
+          <button
+            onClick={send}
+            className="bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white px-5 py-2 rounded-full flex items-center gap-2 shadow-md"
+          >
             <i className="ri-send-plane-fill"></i>
             Send
           </button>
@@ -95,14 +159,20 @@ function Project() {
           <div className="p-4 font-semibold border-b border-white/20">
             👥 Team Members
           </div>
-          {selectedUserIds.map((id) => {
-            const user = users.find((u) => u.id === id);
-            return (
-              <div key={id} className="p-4 hover:bg-white/10 cursor-pointer">
-                • {user?.name}
+          {project?.users?.length > 0 ? (
+            project.users.map((user) => (
+              <div
+                key={user._id}
+                className="p-4 hover:bg-white/10 cursor-pointer"
+              >
+                • {user.email}
               </div>
-            );
-          })}
+            ))
+          ) : (
+            <div className="p-4 text-sm text-gray-200">
+              No collaborators yet
+            </div>
+          )}
         </div>
       </section>
 
@@ -120,23 +190,23 @@ function Project() {
               Select Users
             </h3>
             <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-              {users.map((user) => (
+              {users.map((u) => (
                 <li
-                  key={user.id}
-                  onClick={() => handleUserClick(user.id)}
+                  key={u._id}
+                  onClick={() => handleUserClick(u._id)} // ✅ fixed
                   className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition ${
-                    selectedUserIds.includes(user.id)
+                    selectedUserIds.includes(u._id)
                       ? "bg-indigo-600 text-white border-indigo-600"
                       : "bg-gray-50 hover:bg-indigo-100 border-gray-200"
                   }`}
                 >
                   <span>
-                    <span className="font-medium">{user.name}</span>
+                    <span className="font-medium">{u.email}</span>
                     <span className="block text-xs text-gray-500">
-                      {user.email}
+                      {u.email}
                     </span>
                   </span>
-                  {selectedUserIds.includes(user.id) && (
+                  {selectedUserIds.includes(u._id) && (
                     <i className="ri-check-line text-xl"></i>
                   )}
                 </li>
@@ -151,10 +221,7 @@ function Project() {
             {/* Add Collaborators Button */}
             <button
               className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-6 py-2 rounded-full shadow-lg"
-              onClick={() => {
-                // yaha backend pe bhejna hoga
-                setIsModalOpen(false);
-              }}
+              onClick={addCollaborators}
             >
               Add Collaborators
             </button>

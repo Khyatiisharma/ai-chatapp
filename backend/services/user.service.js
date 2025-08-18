@@ -49,8 +49,18 @@ const findUserByEmail = async (email) => {
   }
 };
 
+export const getUserById = async (id) => {
+  // const user = await userModel.find({ _id: { $ne: id } });
+  const user = await userModel.findById(id).select("-password");
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+};
+
 // ✅ Export both in the default object
 export default {
   createUser,
   findUserByEmail,
+  getUserById,
 };

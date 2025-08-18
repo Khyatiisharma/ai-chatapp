@@ -1,9 +1,10 @@
 import userModel from "../model/user.model.js";
-import userService from "../services/user.service.js";
+
 import redis from "../services/redis.service.js";
 
+import userService from "../services/user.service.js";
+
 import { validationResult } from "express-validator";
-import * as userController from "../controllers/user.controller.js";
 
 export const createUserController = async (req, res) => {
   const errors = validationResult(req);
@@ -63,6 +64,23 @@ export const logoutController = async (req, res) => {
     redis.set(token, "logged_out", "EX", 3600);
 
     res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const loggedinUser = await userModel.findOne({ email: req.user.email });
+    if (!loggedinUser) {
+      return res.status(404).json({ message: "Logged in user not found" });
+    }
+
+    const users = await userModel
+      .find({ _id: { $ne: loggedinUser._id } })
+      .select("-password");
+
+    return res.status(200).json({ users });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

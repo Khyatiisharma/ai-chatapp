@@ -1,7 +1,6 @@
-
-import projectModel from "../model/project.model.js";
 import * as projectService from "../services/project.service.js";
 import { validationResult } from "express-validator";
+import User from "../model/user.model.js";
 
 export const createProject = async (req, res) => {
   try {
@@ -41,6 +40,54 @@ export const getAllProjects = async (req, res) => {
     return res.status(200).json(allProjects);
   } catch (error) {
     console.error("Error fetching projects:", error);
-    return res.status(500).json({ message: error.message || "Internal server error" });
+    return res
+      .status(500)
+      .json({ message: error.message || "Internal server error" });
+  }
+};
+
+export const addUserToProject = async (req, res) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { projectId, users } = req.body;
+
+    const loggedInUser = await User.findOne({
+      email: req.user.email,
+    });
+
+    const project = await projectService.addUsersToProject({
+      projectId,
+      users,
+      userId: loggedInUser._id,
+    });
+
+    return res.status(200).json({
+      project,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+export const getProjectById = async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    const project = await projectService.getProjectById({
+      projectId: req.params.projectId,
+    });
+
+    return res.status(200).json({
+      project,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(400).json({ error: err.message });
   }
 };

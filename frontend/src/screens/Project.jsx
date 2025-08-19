@@ -20,7 +20,35 @@ function Project() {
   const [messages, setMessages] = useState([]); // ✅ chat messages state
   const { user } = useContext(UserContext);
   const messageBox = useRef(null);
-  const [fileTree, setFileTree] = useState({});
+  const [fileTree, setFileTree] = useState({
+  "app.js": {
+    content: `
+      const express = require('express');
+      const app = express();
+
+      app.get('/', (req, res) => {
+        res.send('Hello World!');
+      });
+
+      app.listen(3000, () => {
+        console.log('Server running on port 3000');
+      });
+    `
+  },
+  "package.json": {
+    content: `
+      {
+        "name": "temp-server",
+        "version": "1.0.0",
+        "main": "app.js",
+        "dependencies": {
+          "express": "^4.18.2"
+        }
+      }
+    `
+  }
+});
+  const [selectedFile, setSelectedFile] = useState("app.js");
 
   function send() {
     if (!message.trim()) return;
@@ -77,22 +105,31 @@ function Project() {
   //   );
   // }
   function WriteAiMessage(message) {
-    try {
-      // Agar AI ka response code block ke andar aaya ho to clean kar do
-      let cleanMsg = message
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-
-      // Ab safe parse
-      const parsed = JSON.parse(cleanMsg);
+    // If message is an object, show its text property
+    if (typeof message === "object" && message !== null) {
       return (
-        <pre className="bg-gradient-to-r from-green-400 via-green-500 to-green-600 text-white p-3 rounded-xl text-wrap overflow-auto">
+        <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
+          {message.text || JSON.stringify(message)}
+        </div>
+      );
+    }
+    // If message is a JSON string, try to parse and extract text
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed && parsed.text) {
+        return (
+          <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
+            {parsed.text}
+          </div>
+        );
+      }
+      return (
+        <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
           {JSON.stringify(parsed, null, 2)}
-        </pre>
+        </div>
       );
     } catch (err) {
-      // Agar parse fail ho gaya to plain text dikhao
+      // If not JSON, just show as plain text
       return (
         <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
           {message}
@@ -231,33 +268,50 @@ function Project() {
       </section>
 
       {/* Right Side (AI Integration area) → 2/3 */}
-      <section className="h-full w-2/3 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center text-gray-400 relative">
-        <p className="text-lg font-medium animate-pulse">
-          🤖 AI Assistant coming soon...
-        </p>
-
-        {/* Sliding Side Panel */}
-        <div
-          className={`sidePanel fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-indigo-600 to-blue-600 text-white shadow-lg transform transition-transform duration-300 z-20 ${
-            isSidePanelOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="p-4 font-semibold border-b border-white/20">
-            👥 Team Members
+      <section className="h-full w-2/3 bg-gradient-to-br from-gray-50 to-gray-100 flex relative">
+        {/* File Explorer (left panel) */}
+        <div className="w-1/4 h-full bg-white border-r flex flex-col">
+          <div className="p-4 font-semibold border-b">📁 File Explorer</div>
+          <ul className="flex-1 overflow-y-auto">
+            {Object.keys(fileTree).map((file) => (
+              <li
+                key={file}
+                className={`px-4 py-2 cursor-pointer hover:bg-indigo-100 transition ${
+                  selectedFile === file ? "bg-indigo-200 font-bold" : ""
+                }`}
+                onClick={() => setSelectedFile(file)}
+              >
+                {file}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {/* Code Editor/Viewer (right panel) */}
+        <div className="w-3/4 h-full flex flex-col">
+          {/* File Tabs */}
+          <div className="flex items-center border-b bg-gray-100">
+            {Object.keys(fileTree).map((file) => (
+              <button
+                key={file}
+                onClick={() => setSelectedFile(file)}
+                className={`px-4 py-2 -mb-px border-b-2 transition text-sm ${
+                  selectedFile === file
+                    ? "border-indigo-500 bg-white font-semibold text-indigo-700"
+                    : "border-transparent text-gray-500 hover:text-indigo-600"
+                }`}
+                style={{ outline: "none" }}
+              >
+                {file}
+              </button>
+            ))}
           </div>
-          {project?.users?.length > 0 ? (
-            project.users.map((u) => (
-              <div key={u._id} className="p-4 hover:bg-white/10 cursor-pointer">
-                • {u.email}
-              </div>
-            ))
-          ) : (
-            <div className="p-4 text-sm text-gray-200">
-              No collaborators yet
-            </div>
-          )}
+          {/* File Content */}
+          <div className="flex-1 overflow-auto bg-gray-900 text-green-200 p-4 text-sm rounded-b-lg">
+            <pre className="whitespace-pre-wrap">{fileTree[selectedFile]?.content.trim()}</pre>
+          </div>
         </div>
       </section>
+      
 
       {/* Modal for users list */}
       {isModalOpen && (

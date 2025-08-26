@@ -16,8 +16,8 @@ const PORT = process.env.PORT || 5000;
 
 app.use(
   cors({
-    origin: "http://98.82.202.185:5173", // frontend ka public IP + port
-    credentials: true,                   // cookies, auth headers ke liye
+    origin: "http://localhost:5173", 
+    credentials: true,                   
   })
 );
 

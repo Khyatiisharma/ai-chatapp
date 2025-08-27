@@ -7,69 +7,61 @@ import {
   sendMessage,
 } from "../config/socket";
 import { UserContext } from "../context/user.context.jsx";
-import Markdown from "markdown-to-jsx";
 
 function Project() {
   const location = useLocation();
-  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [users, setUsers] = useState([]);
   const [project, setProject] = useState(location.state?.project || null);
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([]); // ✅ chat messages state
+  const [messages, setMessages] = useState([]);
   const { user } = useContext(UserContext);
   const messageBox = useRef(null);
   const [fileTree, setFileTree] = useState({
-  "app.js": {
-    content: `
-      const express = require('express');
-      const app = express();
+    "app.js": {
+      content: `
+const express = require('express');
+const app = express();
 
-      app.get('/', (req, res) => {
-        res.send('Hello World!');
-      });
-
-      app.listen(3000, () => {
-        console.log('Server running on port 3000');
-      });
-    `
-  },
-  "package.json": {
-    content: `
-      {
-        "name": "temp-server",
-        "version": "1.0.0",
-        "main": "app.js",
-        "dependencies": {
-          "express": "^4.18.2"
-        }
-      }
-    `
-  }
+app.get('/', (req, res) => {
+  res.send('Hello World!');
 });
+
+app.listen(3000, () => {
+  console.log('Server running on port 3000');
+});
+      `,
+    },
+    "package.json": {
+      content: `
+{
+  "name": "temp-server",
+  "version": "1.0.0",
+  "main": "app.js",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+      `,
+    },
+  });
   const [selectedFile, setSelectedFile] = useState("app.js");
 
+  // ✅ send message
   function send() {
     if (!message.trim()) return;
-
-    // apna message state me add karo
     const newMsg = {
       message,
       sender: { _id: user._id, email: user.email },
       self: true,
     };
     setMessages((prev) => [...prev, newMsg]);
-
-    // server ko bhejo
-    sendMessage("project-message", {
-      message,
-      sender: { _id: user._id, email: user.email },
-    });
-
+    sendMessage("project-message", newMsg);
     setMessage("");
   }
 
+  // ✅ select collaborator
   function handleUserClick(userId) {
     setSelectedUserIds((prev) =>
       prev.includes(userId)
@@ -78,32 +70,18 @@ function Project() {
     );
   }
 
+  // ✅ add collaborators
   function addCollaborators() {
     axios
       .put("/projects/add-user", {
         projectId: project._id,
         users: selectedUserIds,
       })
-      .then((res) => {
-        console.log(res.data);
-        setIsModalOpen(false);
-      })
+      .then(() => setIsModalOpen(false))
       .catch((err) => console.log(err.response?.data || err.message));
   }
-  // function WriteAiMessage(message) {
-  //   const msgobj = JSON.parse(message);
-  //   return (
-  //     <Markdown
-  //       className="prose prose-sm max-w-none text-white"
-  //       children={msgobj.text}
-  //       options={{ overrides: { code: SyntaxHighlighter } }}
-  //     >
-  //       <SyntaxHighlighter language="javascript" style={docco}>
-  //         {msgobj.code}
-  //       </SyntaxHighlighter>
-  //     </Markdown>
-  //   );
-  // }
+
+  // ✅ socket setup + fetch
   function WriteAiMessage(message) {
     // If message is an object, show its text property
     if (typeof message === "object" && message !== null) {
@@ -117,25 +95,16 @@ function Project() {
     try {
       const parsed = JSON.parse(message);
       if (parsed && parsed.text) {
-        return (
-          <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
-            {parsed.text}
-          </div>
-        );
+        return <div className=" text-sm">{parsed.text}</div>;
       }
-      return (
-        <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
-          {JSON.stringify(parsed, null, 2)}
-        </div>
-      );
-    } catch (err) {
-      // If not JSON, just show as plain text
-      return (
-        <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
-          {message}
-        </div>
-      );
+    } catch (error) {
+      console.error("Error parsing AI message:", error);
     }
+    return (
+      <div className="bg-gray-800 text-white p-3 rounded-xl text-sm">
+        {message}
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -144,13 +113,10 @@ function Project() {
 
     initializeSocket(projectId);
 
-    // ✅ incoming messages ko UI me append karo
     receiveMessage("project-message", (data) => {
-      console.log("📩 Incoming:", data);
       setMessages((prev) => [...prev, { ...data, self: false }]);
     });
 
-    // project fetch
     axios
       .get(`/projects/get-project/${projectId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -158,7 +124,6 @@ function Project() {
       .then((res) => setProject(res.data.project))
       .catch((err) => console.log(err));
 
-    // users fetch
     axios
       .get("/users/all", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -175,54 +140,49 @@ function Project() {
   }, [messages]);
 
   return (
-    <main className="h-screen w-screen flex bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
-      {/* Left Side (Chat UI) → 1/3 */}
-      <section className="h-full w-1/3 flex flex-col bg-white shadow-xl border-r relative z-10">
+    <main className="h-screen w-screen flex bg-[#1e1e1e] text-gray-200 overflow-hidden font-mono">
+      {/* Left: Chat */}
+      <section className="h-full w-1/3 flex flex-col border-r border-gray-700 bg-[#252526]">
         {/* Header */}
-        <header className="flex justify-between items-center p-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow">
+        <header className="flex justify-between items-center px-4 py-3 bg-[#333333] border-b border-gray-700">
+          <h2 className="font-semibold text-sm">💬 Chat</h2>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition"
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm"
           >
-            <i className="ri-add-fill"></i>
-            Add Collaborator
-          </button>
-          <h2 className="font-semibold text-lg tracking-wide">💬 Chat</h2>
-          <button
-            onClick={() => setIsSidePanelOpen(!isSidePanelOpen)}
-            className="p-2 hover:bg-white/20 rounded-full"
-          >
-            <i className="ri-group-line text-xl"></i>
+            + Collaborator
           </button>
         </header>
 
         {/* Messages */}
         <div
           ref={messageBox}
-          className="messages-box flex-grow p-6 flex flex-col gap-4 overflow-y-auto bg-gray-50"
+          className="flex-grow p-6 flex flex-col gap-4 overflow-y-auto bg-[#1e1e1e]"
         >
           {messages.map((msg, idx) => (
             <div
               key={idx}
-              className={`max-w-[85%] p-3 rounded-2xl shadow ${
+              className={`max-w-[85%] p-3 rounded-2xl shadow-md ${
                 msg.self
                   ? "self-end bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
-                  : "self-start bg-white border"
+                  : "self-start bg-[#2d2d2d] border border-gray-700"
               }`}
             >
+              {/* ✅ Sender Info (Always show email OR AI tag) */}
               <small
                 className={`block text-xs mb-1 ${
-                  msg.self ? "opacity-80" : "text-gray-400"
+                  msg.self ? "text-gray-200 opacity-80" : "text-gray-400"
                 }`}
               >
-                {msg.sender._id === "ai" ? "🤖 AI Assistant" : msg.sender.email}
+                {msg.sender._id === "ai" ? "🤖 AI" : msg.message}
               </small>
 
+              {/* ✅ Message Content */}
               <div
-                className={`text-sm px-4 py-2 rounded-2xl shadow-md max-w-[90%] ${
+                className={`text-sm px-4 py-2 rounded-2xl shadow-sm ${
                   msg.sender._id === "ai"
-                    ? "bg-gradient-to-r from-green-400 via-green-500 to-green-600 text-white"
-                    : "bg-white border text-gray-800"
+                    ? "bg-gradient-to-r from-green-500 to-green-700 text-white"
+                    : "bg-[#1e1e1e] text-gray-200 border border-gray-700"
                 }`}
               >
                 {msg.sender._id === "ai"
@@ -232,52 +192,39 @@ function Project() {
             </div>
           ))}
         </div>
-        {/* {msg.sender.email}
-         */}
-        {/* {msg.sender._id === "ai" ? "🤖 AI Assistant" : msg.sender.email}
-                </small>
-                {/* <p className="text-sm">{msg.message}</p> */}
-        {/* <div className="text-sm overflow-auto bg-slate-950 text-white">
-                  {msg.sender._id === "ai" ? (
-                    <Markdown className="prose prose-sm max-w-none">
-                      {msg.message}
-                    </Markdown>
-                  ) : (
-                    msg.message
-                  )}
-                </div>
-              <
 
-          {/* Input Field */}
-        <div className="p-4 bg-white flex items-center gap-2 shadow-inner">
+        {/* Input */}
+        <div className="p-3 border-t border-gray-700 bg-[#2d2d2d] flex items-center gap-2">
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="flex-grow p-3 px-4 border rounded-full outline-none focus:ring-2 focus:ring-indigo-400 transition"
-            type="text"
-            placeholder="Type your message..."
+            className="flex-grow px-3 py-2 bg-[#1e1e1e] border border-gray-600 focus:border-blue-500 focus:ring-0 outline-none text-sm"
+            placeholder="Type a message..."
           />
           <button
             onClick={send}
-            className="bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white px-5 py-2 rounded-full flex items-center gap-2 shadow-md"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-sm"
           >
-            <i className="ri-send-plane-fill"></i>
             Send
           </button>
         </div>
       </section>
 
-      {/* Right Side (AI Integration area) → 2/3 */}
-      <section className="h-full w-2/3 bg-gradient-to-br from-gray-50 to-gray-100 flex relative">
-        {/* File Explorer (left panel) */}
-        <div className="w-1/4 h-full bg-white border-r flex flex-col">
-          <div className="p-4 font-semibold border-b">📁 File Explorer</div>
-          <ul className="flex-1 overflow-y-auto">
+      {/* Right: Code Editor */}
+      <section className="h-full w-2/3 flex">
+        {/* File Explorer */}
+        <div className="w-1/4 border-r border-gray-700 bg-[#252526]">
+          <div className="px-4 py-2 text-xs uppercase tracking-wider border-b border-gray-700">
+            Explorer
+          </div>
+          <ul className="text-sm">
             {Object.keys(fileTree).map((file) => (
               <li
                 key={file}
-                className={`px-4 py-2 cursor-pointer hover:bg-indigo-100 transition ${
-                  selectedFile === file ? "bg-indigo-200 font-bold" : ""
+                className={`px-4 py-2 cursor-pointer ${
+                  selectedFile === file
+                    ? "bg-[#37373d] text-blue-400"
+                    : "hover:bg-[#2a2a2a]"
                 }`}
                 onClick={() => setSelectedFile(file)}
               >
@@ -286,77 +233,53 @@ function Project() {
             ))}
           </ul>
         </div>
-        {/* Code Editor/Viewer (right panel) */}
-        <div className="w-3/4 h-full flex flex-col">
-          {/* File Tabs */}
-          <div className="flex items-center border-b bg-gray-100">
+
+        {/* Editor */}
+        <div className="w-3/4 flex flex-col bg-[#1e1e1e]">
+          <div className="flex items-center border-b border-gray-700 bg-[#2d2d2d]">
             {Object.keys(fileTree).map((file) => (
               <button
                 key={file}
                 onClick={() => setSelectedFile(file)}
-                className={`px-4 py-2 -mb-px border-b-2 transition text-sm ${
+                className={`px-4 py-2 text-sm ${
                   selectedFile === file
-                    ? "border-indigo-500 bg-white font-semibold text-indigo-700"
-                    : "border-transparent text-gray-500 hover:text-indigo-600"
+                    ? "bg-[#1e1e1e] border-b-2 border-blue-500 text-blue-400"
+                    : "text-gray-400 hover:text-gray-200"
                 }`}
-                style={{ outline: "none" }}
               >
                 {file}
               </button>
             ))}
           </div>
-          {/* File Content */}
-          <div className="flex-1 overflow-auto bg-gray-900 text-green-200 p-4 text-sm rounded-b-lg">
-            <pre className="whitespace-pre-wrap">{fileTree[selectedFile]?.content.trim()}</pre>
+          <div className="flex-1 overflow-auto p-4 text-green-400 text-sm">
+            <pre>{fileTree[selectedFile]?.content.trim()}</pre>
           </div>
         </div>
       </section>
-      
 
-      {/* Modal for users list */}
+      {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl p-6 relative w-full max-w-md mx-auto animate-fadeIn">
-            <button
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl"
-              onClick={() => setIsModalOpen(false)}
-            >
-              &times;
-            </button>
-            <h3 className="text-lg font-semibold mb-4 text-center">
-              Select Users
-            </h3>
-            <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-[#1e1e1e] border border-gray-700 w-full max-w-md p-6">
+            <h3 className="text-base mb-4">Select Users</h3>
+            <ul className="space-y-2 max-h-60 overflow-y-auto">
               {users.map((u) => (
                 <li
                   key={u._id}
                   onClick={() => handleUserClick(u._id)}
-                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition ${
+                  className={`flex items-center justify-between px-3 py-2 cursor-pointer border ${
                     selectedUserIds.includes(u._id)
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-gray-50 hover:bg-indigo-100 border-gray-200"
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "bg-[#2d2d2d] border-gray-700 hover:bg-[#333]"
                   }`}
                 >
-                  <span>
-                    <span className="font-medium">{u.email}</span>
-                    <span className="block text-xs text-gray-500">
-                      {u.email}
-                    </span>
-                  </span>
-                  {selectedUserIds.includes(u._id) && (
-                    <i className="ri-check-line text-xl"></i>
-                  )}
+                  {u.email}
+                  {selectedUserIds.includes(u._id) && "✔"}
                 </li>
               ))}
             </ul>
-            {selectedUserIds.length > 0 && (
-              <div className="mt-4 text-center text-sm text-indigo-600">
-                Selected User IDs:{" "}
-                <span className="font-mono">{selectedUserIds.join(", ")}</span>
-              </div>
-            )}
             <button
-              className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-6 py-2 rounded-full shadow-lg"
+              className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-700 text-sm"
               onClick={addCollaborators}
             >
               Add Collaborators
@@ -366,172 +289,6 @@ function Project() {
       )}
     </main>
   );
-
-  // return (
-  //   <main className="h-screen w-screen flex bg-gradient-to-br from-slate-900 via-gray-900 to-black text-white overflow-hidden">
-  //     {/* Left Side (Chat UI) */}
-  //     <section className="h-full w-1/3 flex flex-col backdrop-blur-xl bg-white/10 border-r border-white/10 shadow-xl relative z-10">
-  //       {/* Header */}
-  //       <header className="flex justify-between items-center p-4 bg-gradient-to-r from-indigo-600/80 to-blue-600/80 text-white rounded-b-xl shadow-lg">
-  //         <button
-  //           onClick={() => setIsModalOpen(true)}
-  //           className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-xl transition-all"
-  //         >
-  //           <i className="ri-add-fill"></i>
-  //           Add
-  //         </button>
-  //         <h2 className="font-semibold text-lg tracking-wide">💬 Chat</h2>
-  //         <button
-  //           onClick={() => setIsSidePanelOpen(!isSidePanelOpen)}
-  //           className="p-2 hover:bg-white/20 rounded-full"
-  //         >
-  //           <i className="ri-group-line text-xl"></i>
-  //         </button>
-  //       </header>
-
-  //       {/* Messages */}
-  //       <div
-  //         ref={messageBox}
-  //         className="messages-box flex-grow p-6 flex flex-col gap-4 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-500 scrollbar-track-transparent scroll-smooth"
-  //       >
-  //         {messages.map((msg, idx) => (
-  //           <div
-  //             key={idx}
-  //             className={`max-w-[85%] p-3 rounded-2xl shadow-lg backdrop-blur-lg ${
-  //               msg.self
-  //                 ? "self-end bg-gradient-to-r from-indigo-500 to-blue-500 text-white"
-  //                 : "self-start bg-white/20 border border-white/10 text-white"
-  //             }`}
-  //           >
-  //             <small
-  //               className={`block text-xs mb-1 ${
-  //                 msg.self ? "opacity-80" : "text-gray-300"
-  //               }`}
-  //             >
-  //               {msg.sender._id === "ai" ? "🤖 AI Assistant" : msg.sender.email}
-  //             </small>
-
-  //             <div
-  //               className={`text-sm px-4 py-2 rounded-2xl shadow-md ${
-  //                 msg.sender._id === "ai"
-  //                   ? "bg-gradient-to-r from-green-400 to-green-600 text-white  text-wrap overflow-auto"
-  //                   : "bg-white/10 text-gray-100"
-  //               }`}
-  //             >
-  //               {msg.sender._id === "ai" ? (
-  //                 <Markdown className="prose prose-sm max-w-none text-white">
-  //                   {msg.message}
-  //                 </Markdown>
-  //               ) : (
-  //                 msg.message
-  //               )}
-  //             </div>
-  //           </div>
-  //         ))}
-  //       </div>
-
-  //       {/* Input Field */}
-  //       <div className="p-4 bg-white/10 flex items-center gap-2 backdrop-blur-lg border-t border-white/10">
-  //         <input
-  //           value={message}
-  //           onChange={(e) => setMessage(e.target.value)}
-  //           className="flex-grow p-3 px-4 rounded-full bg-white/20 border border-white/20 text-white placeholder-gray-300 outline-none focus:ring-2 focus:ring-indigo-400 transition"
-  //           type="text"
-  //           placeholder="Type your message..."
-  //         />
-  //         <button
-  //           onClick={send}
-  //           className="bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white px-5 py-2 rounded-full flex items-center gap-2 shadow-lg"
-  //         >
-  //           <i className="ri-send-plane-fill"></i>
-  //         </button>
-  //       </div>
-  //     </section>
-
-  //     {/* Right Side */}
-  //     <section className="h-full w-2/3 bg-gradient-to-br from-slate-800 via-slate-900 to-black flex items-center justify-center relative">
-  //       <p className="text-lg font-medium text-gray-400 animate-pulse">
-  //         🤖 AI Assistant coming soon...
-  //       </p>
-
-  //       {/* Side Panel */}
-  //       <div
-  //         className={`sidePanel fixed top-0 left-0 h-full w-64 backdrop-blur-xl bg-white/10 border-r border-white/20 text-white shadow-xl transform transition-transform duration-300 z-20 ${
-  //           isSidePanelOpen ? "translate-x-0" : "-translate-x-full"
-  //         }`}
-  //       >
-  //         <div className="p-4 font-semibold border-b border-white/20">
-  //           👥 Team Members
-  //         </div>
-  //         <div className="overflow-y-auto h-[90%] scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent scroll-smooth">
-  //           {project?.users?.length > 0 ? (
-  //             project.users.map((u) => (
-  //               <div
-  //                 key={u._id}
-  //                 className="p-4 hover:bg-white/10 cursor-pointer transition"
-  //               >
-  //                 • {u.email}
-  //               </div>
-  //             ))
-  //           ) : (
-  //             <div className="p-4 text-sm text-gray-300">
-  //               No collaborators yet
-  //             </div>
-  //           )}
-  //         </div>
-  //       </div>
-  //     </section>
-
-  //     {/* Modal */}
-  //     {isModalOpen && (
-  //       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
-  //         <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 relative w-full max-w-md mx-auto animate-fadeIn border border-white/20">
-  //           <button
-  //             className="absolute top-2 right-2 text-gray-300 hover:text-white text-2xl"
-  //             onClick={() => setIsModalOpen(false)}
-  //           >
-  //             &times;
-  //           </button>
-  //           <h3 className="text-lg font-semibold mb-4 text-center text-white">
-  //             Select Users
-  //           </h3>
-  //           <ul className="space-y-2 max-h-64 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-indigo-500 scrollbar-track-transparent scroll-smooth">
-  //             {users.map((u) => (
-  //               <li
-  //                 key={u._id}
-  //                 onClick={() => handleUserClick(u._id)}
-  //                 className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition ${
-  //                   selectedUserIds.includes(u._id)
-  //                     ? "bg-indigo-600/80 text-white border-indigo-600"
-  //                     : "bg-white/10 hover:bg-white/20 border-white/20 text-gray-200"
-  //                 }`}
-  //               >
-  //                 <span>
-  //                   <span className="font-medium">{u.email}</span>
-  //                 </span>
-  //                 {selectedUserIds.includes(u._id) && (
-  //                   <i className="ri-check-line text-xl"></i>
-  //                 )}
-  //               </li>
-  //             ))}
-  //           </ul>
-  //           {selectedUserIds.length > 0 && (
-  //             <div className="mt-4 text-center text-sm text-indigo-300">
-  //               Selected User IDs:{" "}
-  //               <span className="font-mono">{selectedUserIds.join(", ")}</span>
-  //             </div>
-  //           )}
-  //           <button
-  //             className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-6 py-2 rounded-full shadow-lg"
-  //             onClick={addCollaborators}
-  //           >
-  //             Add Collaborators
-  //           </button>
-  //         </div>
-  //       </div>
-  //     )}
-  //   </main>
-  // );
 }
 
 export default Project;
